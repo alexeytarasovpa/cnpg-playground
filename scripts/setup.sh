@@ -1,74 +1,22 @@
 #!/usr/bin/env bash
-#
-# This script sets up a simulated environment for deploying CloudNativePG
-# across two regions: Europe and the USA. Each region includes its own
-# Kubernetes cluster and a dedicated object storage system for backups,
-# using an external MinIO instance in Docker to emulate an S3-compatible
-# object store.
-#
-# The Kubernetes clusters in each region consist of multiple nodes, each with
-# specialized roles—managing the control plane, handling infrastructure workloads,
-# hosting applications, and running PostgreSQL databases.
-#
-# Note: This environment is for learning purposes only and should not be used
-# in production.
-#
-#
-# Copyright The CloudNativePG Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
 set -eu
-
 # MinIO settings and credentials
-MINIO_IMAGE="${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z}"
-MINIO_EU_ROOT_USER="${MINIO_EU_ROOT_USER:-cnpg-eu}"
-MINIO_EU_ROOT_PASSWORD="${MINIO_EU_ROOT_PASSWORD:-postgres5432-eu}"
-MINIO_US_ROOT_USER="${MINIO_US_ROOT_USER:-cnpg-us}"
-MINIO_US_ROOT_PASSWORD="${MINIO_US_ROOT_PASSWORD:-postgres5432-us}"
-
-# Ensure prerequisites are met
-prereqs="kind kubectl git"
-for cmd in $prereqs; do
-   if [ -z "$(which $cmd)" ]; then
-      echo "Missing command $cmd"
-      exit 1
-   fi
-done
-
+export MINIO_IMAGE="${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z}"
+export MINIO_EU_ROOT_USER="${MINIO_EU_ROOT_USER:-cnpg-eu}"
+export MINIO_EU_ROOT_PASSWORD="${MINIO_EU_ROOT_PASSWORD:-postgres5432-eu}"
+export MINIO_US_ROOT_USER="${MINIO_US_ROOT_USER:-cnpg-us}"
+export MINIO_US_ROOT_PASSWORD="${MINIO_US_ROOT_PASSWORD:-postgres5432-us}"
 # Look for a supported container provider and use it throughout
-containerproviders="docker podman"
+export containerproviders="docker"
 for containerProvider in `which $containerproviders`; do
-    CONTAINER_PROVIDER=$containerProvider
+export CONTAINER_PROVIDER=$containerProvider
     break
 done
-
-# Ensure we found a supported container provider
-if [ -z ${CONTAINER_PROVIDER+x} ]; then
-    echo "Missing container provider, supported providers are $containerproviders"
-    exit 1
-fi
-
-git_repo_root=$(git rev-parse --show-toplevel)
-kube_config_path=${git_repo_root}/k8s/kube-config.yaml
-kind_config_path=${git_repo_root}/k8s/kind-cluster.yaml
-
-# Setup a separate Kubeconfig
+export git_repo_root=$(git rev-parse --show-toplevel)
+export kube_config_path=${git_repo_root}/k8s/kube-config.yaml
+export kind_config_path=${git_repo_root}/k8s/kind-cluster.yaml
 cd "${git_repo_root}"
 export KUBECONFIG=${kube_config_path}
-
-# Setup the object stores
 mkdir -p minio-eu
 $CONTAINER_PROVIDER run \
    --name minio-eu \
@@ -78,7 +26,6 @@ $CONTAINER_PROVIDER run \
    -e "MINIO_ROOT_PASSWORD=$MINIO_EU_ROOT_PASSWORD" \
    -u $(id -u):$(id -g) \
    ${MINIO_IMAGE} server /data --console-address ":9001"
-
 mkdir -p minio-us
 $CONTAINER_PROVIDER run \
    --name minio-us \
@@ -88,7 +35,6 @@ $CONTAINER_PROVIDER run \
    -e "MINIO_ROOT_PASSWORD=$MINIO_US_ROOT_PASSWORD" \
    -u $(id -u):$(id -g) \
    ${MINIO_IMAGE} server /data --console-address ":9001"
-
 # Setup the EU Kind Cluster
 kind create cluster --config ${kind_config_path} --name k8s-eu
 # The `node-role.kubernetes.io` label must be set after the node have been created

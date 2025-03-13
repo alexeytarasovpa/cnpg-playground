@@ -3,7 +3,7 @@ kind: Cluster
 metadata:
   name: pg-us
 spec:
-  instances: 3
+  instances: 1
 
   storage:
     size: 1Gi
@@ -90,7 +90,7 @@ metadata:
   name: pg-us-backup
 spec:
   method: plugin
-  schedule: '0 0 0 * * *'
+  schedule: '* * * * * *'
   backupOwnerReference: self
   cluster:
     name: pg-us

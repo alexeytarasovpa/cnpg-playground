@@ -1,0 +1,61 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-restore6
+spec:
+  instances: 1 # if increased, could not be decreased easy
+  storage:
+    size: 1Gi
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  superuserSecret:
+    name: app-secret
+  bootstrap:
+    recovery:
+      source: cluster-balanced
+  externalClusters:
+    - name: cluster-balanced
+      barmanObjectStore:
+        destinationPath: s3://movos-development-backups_postgresql/testcnpg/                        # s3://bucket/directory/
+        endpointURL: https://zratzwdrr5mk.compat.objectstorage.eu-zurich-1.oraclecloud.com          # <scheme>://<oracle_namespace>.compat.objectstorage.<region>.oraclecloud.com
+        s3Credentials:
+          accessKeyId:
+            name: testminiosetup
+            key: access_key
+          secretAccessKey:
+            name: testminiosetup
+            key: secret_key
+        wal:
+            maxParallel: 8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-restore-pitr7
+spec:
+  instances: 1
+  storage:
+    size: 1Gi
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  superuserSecret:
+    name: app-secret
+  bootstrap:
+    recovery:
+      # Recovery object store containing WAL archive and base backups
+      source: cluster-balanced # have to be equal with cluster name lower
+      recoveryTarget:
+        # Time base target for the recovery
+        targetTime: "2025-03-11 17:26:12+00" # DO NOT BELIEVE OFFICIAL DOCS CNPG - ONLY THIS FORMAT OF TIME
+  externalClusters:
+    - name: cluster-balanced # have to be equal directory on S3 with backups
+      barmanObjectStore:
+        destinationPath: s3://movos-development-backups_postgresql/testcnpg/                        # s3://bucket/directory/
+        endpointURL: https://zratzwdrr5mk.compat.objectstorage.eu-zurich-1.oraclecloud.com          # <scheme>://<oracle_namespace>.compat.objectstorage.<region>.oraclecloud.com
+        s3Credentials:
+          accessKeyId:
+            name: testminiosetup
+            key: access_key
+          secretAccessKey:
+            name: testminiosetup
+            key: secret_key
+        wal:
+            maxParallel: 8

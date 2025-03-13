@@ -1,0 +1,156 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-balanced6
+spec:
+  instances: 2 # if increased, could not be decreased easy
+
+  failoverDelay: 60 # delay before failover procedure starting
+
+  resources:
+    requests:
+      memory: "2048Mi"
+      cpu: 2
+    limits:
+      memory: "2048Mi"
+      cpu: 2
+
+  storage:
+    pvcTemplate:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: local-path
+      volumeMode: Filesystem
+
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: "oci.oraclecloud.com/fault-domain"
+    podAntiAffinityType: required
+
+  primaryUpdateMethod: switchover # switch to replic before primary restart while upgrade image, otherwise - Primary instance is being restarted without a switchover MSG
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+
+
+  # monitoring:
+  #   enablePodMonitor: true
+
+  # See https://cloudnative-pg.io/documentation/current/bootstrap/#bootstrap-an-empty-cluster-initdb
+  bootstrap:
+    initdb:
+      dataChecksums: true
+      database: app
+      owner: app
+      secret:
+        name: app-secret
+  postgresql:
+    # See https://cloudnative-pg.io/documentation/current/postgresql_conf/#the-postgresql-section
+    parameters:
+      # Some very basic Postgres settings
+      max_connections: '100'
+      # log_checkpoints: 'on'
+      # log_lock_waits: 'on'
+      # pg_stat_statements.max: '10000'
+      # pg_stat_statements.track: 'all'
+      # hot_standby_feedback: 'on'
+      # # Container images work fine with sysv shared memory
+      # shared_memory_type: 'sysv'
+      # dynamic_shared_memory_type: 'sysv'
+        # legacy view
+        # TODO: make templates dwith dependencies of instance memory
+        # ALTER SYSTEM SET shared_buffers TO '2GB';
+        # ALTER SYSTEM SET effective_cache_size TO '6GB';
+        # ALTER SYSTEM SET maintenance_work_mem TO '512MB';
+        # ALTER SYSTEM SET checkpoint_completion_target TO '0.9';
+        # ALTER SYSTEM SET wal_buffers TO '16MB';
+        # ALTER SYSTEM SET default_statistics_target TO '100';
+        # ALTER SYSTEM SET random_page_cost TO '4';
+        # ALTER SYSTEM SET effective_io_concurrency TO '2';
+        # ALTER SYSTEM SET work_mem TO '1048kB';
+        # ALTER SYSTEM SET min_wal_size TO '1GB';
+        # ALTER SYSTEM SET max_wal_size TO '4GB';
+        # ALTER SYSTEM SET max_worker_processes TO '4';
+        # ALTER SYSTEM SET max_parallel_workers_per_gather TO '2';
+        # ALTER SYSTEM SET max_parallel_workers TO '4';
+        # ALTER SYSTEM SET max_parallel_maintenance_workers TO '2';
+
+        # ALTER SYSTEM SET wal_level TO 'replica';
+        # ALTER SYSTEM SET archive_mode TO 'on';
+        # ALTER SYSTEM SET archive_command TO '/opt/wal-g/wal-g wal-push "%p" --config /opt/wal-g/wal-g.json';
+        # ALTER SYSTEM SET archive_timeout TO '360';
+        # ALTER SYSTEM SET restore_command TO '/opt/wal-g/wal-g wal-fetch "%f" "%p" --config /opt/wal-g/wal-g.json';
+
+
+  backup: # save files in directory equal server name
+    barmanObjectStore:
+      destinationPath: s3://movos-development-backups_postgresql/testcnpg/                        # s3://bucket/directory/
+      endpointURL: https://zratzwdrr5mk.compat.objectstorage.eu-zurich-1.oraclecloud.com          # <scheme>://<oracle_namespace>.compat.objectstorage.<region>.oraclecloud.com
+      s3Credentials:
+        accessKeyId:
+          name: testminiosetup
+          key: access_key
+        secretAccessKey:
+          name: testminiosetup
+          key: secret_key
+      wal:
+        compression: gzip
+        maxParallel: 8
+        encryption: AES256
+      tags:
+        tag1: "value1"
+      historyTags:
+        tag2: "value2"
+      data:
+        additionalCommandArgs:
+          - "--min-chunk-size=5MB"
+          - "--read-timeout=60"
+          - "-vv"
+    retentionPolicy: "30d"
+
+---
+# See https://cloudnative-pg.io/documentation/current/backup/#scheduled-backups
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: cluster-balanced-backup
+spec:
+  # ATTENTION!!! CONRA-INTUITIVE SYNTAX https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format
+  schedule: '0 0 0,2,4,6,8,10,12,14,16,18,20,22 * * *'
+  #          ^ seconds
+  backupOwnerReference: self
+  cluster:
+    name: cluster-balanced
+  immediate: true
+
+---
+apiVersion: v1
+data:
+  username: YXBw
+  password: cGFzc3dvcmQ=
+kind: Secret
+metadata:
+  name: app-secret
+type: kubernetes.io/basic-auth
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: testminiosetup
+#   namespace: default
+# data:
+#   access_key: "" # base64-кодированный access_key
+#   secret_key: "" # base64-кодированный secret_key
+# type: Opaque
+
+# ---
+# apiVersion: postgresql.cnpg.io/v1 # working too
+# kind: Backup
+# metadata:
+#   name: backup2
+# spec:
+#   method: barmanObjectStore
+#   cluster:
+#     name: cluster-balanced
+---
